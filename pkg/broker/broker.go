@@ -79,7 +79,7 @@ type Broker interface {
 	Provision(uuid.UUID, *ProvisionRequest, bool) (*ProvisionResponse, error)
 	Update(uuid.UUID, *UpdateRequest, bool) (*UpdateResponse, error)
 	Deprovision(apb.ServiceInstance, string, bool, bool) (*DeprovisionResponse, error)
-	Bind(apb.ServiceInstance, uuid.UUID, *BindRequest) (*BindResponse, error)
+	Bind(apb.ServiceInstance, uuid.UUID, *BindRequest, bool) (*BindResponse, error)
 	Unbind(apb.ServiceInstance, uuid.UUID, string, bool) (*UnbindResponse, error)
 	LastOperation(uuid.UUID, *LastOperationRequest) (*LastOperationResponse, error)
 	// TODO: consider returning a struct + error
@@ -823,7 +823,7 @@ func (a AnsibleBroker) isJobInProgress(instance *apb.ServiceInstance, method apb
 }
 
 // Bind - will create a binding between a service.
-func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID, req *BindRequest,
+func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID, req *BindRequest, async bool,
 ) (*BindResponse, error) {
 	// binding_id is the id of the binding.
 	// the instanceUUID is the previously provisioned service id.
@@ -857,12 +857,17 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 	a.log.Debugf(
 		"Injecting PlanID as parameter: { %s: %s }",
 		planParameterKey, planName)
+
 	params[planParameterKey] = planName
+
 	a.log.Debugf("Injecting ServiceClassID as parameter: { %s: %s }",
 		serviceClassIDKey, req.ServiceID)
+
 	params[serviceClassIDKey] = req.ServiceID
+
 	a.log.Debugf("Injecting ServiceInstanceID as parameter: { %s: %s }",
 		serviceInstIDKey, instance.ID.String())
+
 	params[serviceInstIDKey] = instance.ID.String()
 
 	// Create a BindingInstance with a reference to the serviceinstance.
