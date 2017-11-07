@@ -922,6 +922,26 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 	// Currently, the 'launchapbonbind' is set to false in the 'config' ConfigMap
 	var bindExtCreds *apb.ExtractedCredentials
 	metrics.ActionStarted("bind")
+
+	var token string
+	if async {
+		a.log.Info("ASYNC binding in progress")
+
+		bjob := NewBindingJob(serviceInstance, a.clusterConfig, a.log)
+
+		token, err = a.engine.StartNewJob("", bjob, BindingTopic)
+		if err != nil {
+			a.log.Error("Failed to start new job for async binding\n%s", err.Error())
+			return nil, err
+		}
+
+		a.dao.SetState(instanceUUID.String(), apb.JobState{
+			Token:  token,
+			State:  apb.StateInProgress,
+			Method: apb.JobMethodBind,
+		})
+	}
+
 	if a.brokerConfig.LaunchApbOnBind {
 		a.log.Info("Broker configured to run APB bind")
 		_, bindExtCreds, err = apb.Bind(&instance, &params, a.clusterConfig, a.log)
@@ -932,6 +952,7 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 	} else {
 		a.log.Warning("Broker configured to *NOT* launch and run APB bind")
 	}
+
 	instance.AddBinding(bindingUUID)
 	if err := a.dao.SetServiceInstance(instance.ID.String(), &instance); err != nil {
 		return nil, err

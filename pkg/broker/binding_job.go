@@ -68,7 +68,7 @@ func (p *BindingJob) Run(token string, msgBuffer chan<- WorkMsg) {
 	var podName, extCreds string
 	var err error
 
-	//podName, extCreds, err := apb.Provision(p.serviceInstance, p.clusterConfig, p.log)
+	// podName, extCreds, err := apb.Provision(p.serviceInstance, p.clusterConfig, p.log)
 
 	if err != nil {
 		p.log.Error("broker::Binding error occurred.")
