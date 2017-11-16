@@ -912,17 +912,18 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 		return nil, err
 	}
 
-	// Add the DB Credentials this will allow the apb to use these credentials if it so chooses.
+	// Add the DB Credentials this will allow the apb to use these credentials
+	// if it so chooses.
 	if provExtCreds != nil {
 		params[provisionCredentialsKey] = provExtCreds.Credentials
 	}
 
-	// NOTE: We are currently disabling running an APB on bind via 'LaunchApbOnBind'
-	// of the broker config, due to lack of async support of bind in Open Service Broker API
-	// Currently, the 'launchapbonbind' is set to false in the 'config' ConfigMap
+	// NOTE: We are currently disabling running an APB on bind via
+	// 'LaunchApbOnBind' of the broker config, due to lack of async support of
+	// bind in Open Service Broker API Currently, the 'launchapbonbind' is set
+	// to false in the 'config' ConfigMap
 	var bindExtCreds *apb.ExtractedCredentials
 	metrics.ActionStarted("bind")
-
 	var token string
 	if async {
 		a.log.Info("ASYNC binding in progress")
