@@ -537,6 +537,7 @@ func (h handler) bind(w http.ResponseWriter, r *http.Request, params map[string]
 		default:
 			writeResponse(w, http.StatusInternalServerError, broker.ErrorResponse{Description: err.Error()})
 		}
+		return
 	}
 
 	if !h.brokerConfig.GetBool("broker.auto_escalate") {
@@ -606,7 +607,12 @@ func (h handler) unbind(w http.ResponseWriter, r *http.Request, params map[strin
 
 	serviceInstance, err := h.broker.GetServiceInstance(instanceUUID)
 	if err != nil {
-		writeResponse(w, http.StatusGone, nil)
+		switch err {
+		case broker.ErrorNotFound:
+			writeResponse(w, http.StatusGone, nil)
+		default:
+			writeResponse(w, http.StatusInternalServerError, broker.ErrorResponse{Description: err.Error()})
+		}
 		return
 	}
 
@@ -627,7 +633,11 @@ func (h handler) unbind(w http.ResponseWriter, r *http.Request, params map[strin
 			return
 		}
 		if !nsDeleted {
-			if ok, status, err := h.validateUser(userInfo.Username, serviceInstance.Context.Namespace); !ok {
+			if ok, status, err := h.validateUser(userInfo.Username, serviceInstance.Context.Namespace); err != nil {
+				writeResponse(w, http.StatusInternalServerError, broker.ErrorResponse{Description: err.Error()})
+				return
+			}
+			if !ok {
 				writeResponse(w, status, broker.ErrorResponse{Description: err.Error()})
 				return
 			}
