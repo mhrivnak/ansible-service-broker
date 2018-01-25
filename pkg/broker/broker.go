@@ -839,6 +839,7 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 	if err != nil {
 		// etcd return not found i.e. code 100
 		if client.IsKeyNotFound(err) {
+			log.Debug("Plan not found")
 			return nil, false, ErrorNotFound
 		}
 		// otherwise unknown error bubble it up
@@ -880,26 +881,45 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 		log.Warningf("unable to retrieve provision time credentials - %v", err)
 		return nil, false, err
 	}
+
 	if bi, err := a.dao.GetBindInstance(bindingUUID.String()); err == nil {
-		if uuid.Equal(bi.ID, bindingInstance.ID) {
-			if reflect.DeepEqual(bi.Parameters, bindingInstance.Parameters) {
-				bindExtCreds, err := a.dao.GetExtractedCredentials(bi.ID.String())
-				if err != nil && !client.IsKeyNotFound(err) {
-					return nil, false, err
-				}
+		if bi.IsEqual(bindingInstance) {
+			bindExtCreds, err := a.dao.GetExtractedCredentials(bi.ID.String())
+			if err != nil && !client.IsKeyNotFound(err) {
+				return nil, false, err
+			}
+			var cjob apb.JobState
+			if bi.CreateJobKey != "" {
+				cjob, err = a.dao.GetStateByKey(bi.CreateJobKey)
+			}
+
+			switch {
+			// unknown error
+			case err != nil && !client.IsKeyNotFound(err):
+				return nil, false, err
+			// If there is a job in "succeeded" state, or no job at all, or
+			// the referenced job no longer exists (we assume it got
+			// cleaned up eventually), assume everything is complete.
+			case cjob.State == "succeeded", bi.CreateJobKey == "", client.IsKeyNotFound(err):
 				log.Debug("already have this binding instance, returning 200")
-				// since we have this already, we can set async to false
 				resp, err := NewBindResponse(provExtCreds, bindExtCreds)
 				if err != nil {
 					return nil, false, err
 				}
 				return resp, false, ErrorBindingExists
+			// If there is a job in any other state, send client through async flow
+			case len(cjob.State) > 0:
+				return &BindResponse{Operation: cjob.Token}, true, nil
+			default:
+				return nil, false, errors.New("found a JobState with no state")
 			}
-
-			// parameters are different
-			log.Info("duplicate binding instance diff params, returning 409 conflict")
-			return nil, false, ErrorDuplicate
 		}
+
+		// parameters are different
+		log.Info("duplicate binding instance diff params, returning 409 conflict")
+		return nil, false, ErrorDuplicate
+	} else if !client.IsKeyNotFound(err) {
+		return nil, false, err
 	}
 
 	if err := a.dao.SetBindInstance(bindingUUID.String(), bindingInstance); err != nil {
@@ -932,12 +952,17 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 			return nil, false, err
 		}
 
-		if err := a.dao.SetState(instance.ID.String(), apb.JobState{
+		stateKey, err := a.dao.SetState(instance.ID.String(), apb.JobState{
 			Token:  token,
 			State:  apb.StateInProgress,
 			Method: apb.JobMethodBind,
-		}); err != nil {
+		})
+		if err != nil {
 			log.Errorf("failed to set initial jobstate for %v, %v", token, err.Error())
+			return nil, false, err
+		}
+		bindingInstance.CreateJobKey = stateKey
+		if err := a.dao.SetBindInstance(bindingUUID.String(), bindingInstance); err != nil {
 			return nil, false, err
 		}
 		return &BindResponse{Operation: token}, true, nil
@@ -1027,7 +1052,7 @@ func (a AnsibleBroker) Unbind(
 			return nil, false, jerr
 		}
 
-		if err := a.dao.SetState(serviceInstance.ID.String(), apb.JobState{
+		if _, err := a.dao.SetState(serviceInstance.ID.String(), apb.JobState{
 			Token:  token,
 			State:  apb.StateInProgress,
 			Method: apb.JobMethodUnbind,
