@@ -279,23 +279,22 @@ type BindInstance struct {
 	ServiceID    uuid.UUID   `json:"service_id"`
 	Parameters   *Parameters `json:"parameters"`
 	CreateJobKey string
-	DeleteJobKey string
 }
 
 // UserParameters - returns the Parameters field with any keys and values
 // removed that are typically added by the broker itself. The return value
 // should represent what a OSB API client provides in a bind request.
 func (bi *BindInstance) UserParameters() *Parameters {
-	ret := make(Parameters)
+	userparams := make(Parameters)
 	for key, value := range *bi.Parameters {
 		switch key {
 		// Do not copy keys that are generally added by the broker itself.
 		case "cluster", "namespace", "_apb_provision_creds":
 			continue
 		}
-		ret[key] = value
+		userparams[key] = value
 	}
-	return &ret
+	return &userparams
 }
 
 // IsEqual - Determines if two BindInstances are equal, omitting any Parameters

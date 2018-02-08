@@ -882,15 +882,16 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 		return nil, false, err
 	}
 
-	if bi, err := a.dao.GetBindInstance(bindingUUID.String()); err == nil {
-		if bi.IsEqual(bindingInstance) {
-			bindExtCreds, err := a.dao.GetExtractedCredentials(bi.ID.String())
+	if existingBI, err := a.dao.GetBindInstance(bindingUUID.String()); err == nil {
+		if existingBI.IsEqual(bindingInstance) {
+			bindExtCreds, err := a.dao.GetExtractedCredentials(existingBI.ID.String())
+			// It's ok if there aren't any bind credentials yet.
 			if err != nil && !client.IsKeyNotFound(err) {
 				return nil, false, err
 			}
-			var cjob apb.JobState
-			if bi.CreateJobKey != "" {
-				cjob, err = a.dao.GetStateByKey(bi.CreateJobKey)
+			var createJob apb.JobState
+			if existingBI.CreateJobKey != "" {
+				createJob, err = a.dao.GetStateByKey(existingBI.CreateJobKey)
 			}
 
 			switch {
@@ -900,18 +901,21 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 			// If there is a job in "succeeded" state, or no job at all, or
 			// the referenced job no longer exists (we assume it got
 			// cleaned up eventually), assume everything is complete.
-			case cjob.State == "succeeded", bi.CreateJobKey == "", client.IsKeyNotFound(err):
+			case createJob.State == "succeeded", existingBI.CreateJobKey == "", client.IsKeyNotFound(err):
 				log.Debug("already have this binding instance, returning 200")
 				resp, err := NewBindResponse(provExtCreds, bindExtCreds)
 				if err != nil {
 					return nil, false, err
 				}
 				return resp, false, ErrorBindingExists
-			// If there is a job in any other state, send client through async flow
-			case len(cjob.State) > 0:
-				return &BindResponse{Operation: cjob.Token}, true, nil
+			// If there is a job in any other state, send client through async flow.
+			case len(createJob.State) > 0:
+				return &BindResponse{Operation: createJob.Token}, true, nil
+			// This should never happen, but we'll handle it just in case.
 			default:
-				return nil, false, errors.New("found a JobState with no state")
+				err = errors.New("found a JobState with no value for field State")
+				log.Error(err.Error())
+				return nil, false, err
 			}
 		}
 
@@ -922,11 +926,12 @@ func (a AnsibleBroker) Bind(instance apb.ServiceInstance, bindingUUID uuid.UUID,
 		return nil, false, err
 	}
 
+	// No existing BindInstance was found above, so proceed with saving this one
 	if err := a.dao.SetBindInstance(bindingUUID.String(), bindingInstance); err != nil {
 		return nil, false, err
 	}
 
-	// Add the DB Credentials this will allow the apb to use these credentials
+	// Add the DB Credentials. This will allow the apb to use these credentials
 	// if it so chooses.
 	if provExtCreds != nil {
 		params[provisionCredentialsKey] = provExtCreds.Credentials
