@@ -25,7 +25,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/automationbroker/bundle-lib/apb"
 	"github.com/automationbroker/bundle-lib/bundle"
 	"github.com/automationbroker/bundle-lib/registries"
 	"github.com/automationbroker/config"
@@ -384,7 +383,7 @@ func (a AnsibleBroker) Recover() (string, error) {
 			} else if rs.State.Method == bundle.JobMethodUpdate {
 				job = &UpdateJob{instance}
 				topic = UpdateTopic
-			} else if rs.State.Method == apb.JobMethodDeprovision {
+			} else if rs.State.Method == bundle.JobMethodDeprovision {
 				job = &DeprovisionJob{instance, false}
 				topic = DeprovisionTopic
 			} else {
@@ -1073,7 +1072,7 @@ func (a AnsibleBroker) Unbind(
 	}
 
 	// build up unbind parameters
-	params := make(apb.Parameters)
+	params := make(bundle.Parameters)
 	// Fixes BZ1578319 - put last requesting user at the top level
 	// they should be at the top level. We are still keeping the lower level
 	// values as well since others might already be using them.
